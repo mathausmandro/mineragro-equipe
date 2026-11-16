@@ -321,3 +321,7 @@ dialog::backdrop { background: rgba(20, 30, 25, .45); }
   .dash-table tr { break-inside: avoid; }
   a { color: inherit; text-decoration: none; }
 }
+
+/* Dentro do Wix a logo some (o cabeçalho do site já tem); o cartão de login mantém o nome da área. */
+.embed .auth-card .brand-app { display: flex !important; }
+.embed .topbar .brand-app { display: flex !important; }

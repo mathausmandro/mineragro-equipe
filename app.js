@@ -7,6 +7,7 @@
   // ?demo=1 abre a demonstração (dados fictícios em memória) mesmo com o Supabase configurado.
   const DEMO = !CFG.SUPABASE_URL || !CFG.SUPABASE_ANON_KEY || /[?&]demo=1\b/.test(location.search);
   const SITE_URL = CFG.SITE_URL || "https://www.mineragro.com";
+  const APP_URL = CFG.APP_URL || "";
   // Dentro de uma página do Wix (iframe) o cabeçalho e o rodapé do próprio site já aparecem: usa o modo compacto.
   const EMBED = (() => { try { return window.self !== window.top; } catch { return true; } })() || /[?&]embed=1\b/.test(location.search);
   if (EMBED) document.documentElement.classList.add("embed");
@@ -78,7 +79,9 @@
   function supabaseApi() {
     const sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
     const ok = ({ data, error }) => { if (error) throw error; return data; };
-    const redirect = location.origin + location.pathname;
+    // Links de confirmação e de "esqueci a senha" sempre voltam para o endereço público do sistema
+    // (dentro do Wix a página roda num endereço interno do Wix, que não serve para isso).
+    const redirect = APP_URL || location.origin + location.pathname;
     const save = async (table, row) => {
       const { id, ...rest } = row;
       return ok(id
@@ -684,7 +687,7 @@
         </div></div>
       <div class="toolbar no-print">
         <select class="input" data-df="status" aria-label="Quais projetos entram no painel">${STATUS_FILTERS.map(([v, l]) => `<option value="${v}" ${state.df.status === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-        ${EMBED ? `<span class="hint">Se a exportação não abrir aqui dentro do site, use o <a href="${esc(location.href.split("#")[0])}#/painel" target="_blank" rel="noopener">painel em tela cheia</a>.</span>` : ""}
+        ${EMBED ? `<span class="hint">Se a exportação não abrir aqui dentro do site, use o <a href="${esc((APP_URL || location.href.split("#")[0]) + "#/painel")}" target="_blank" rel="noopener">painel em tela cheia</a>.</span>` : ""}
       </div>
 
       <div class="stats">
