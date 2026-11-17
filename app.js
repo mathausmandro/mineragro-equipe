@@ -140,7 +140,8 @@
       { id: "u1", email: "gestor@" + DOMAIN, full_name: "Gestão P&D (demo)", role: "gestor", active: true },
       { id: "u2", email: "ana.souza@" + DOMAIN, full_name: "Ana Souza", role: "equipe", active: true },
       { id: "u3", email: "bruno.lima@" + DOMAIN, full_name: "Bruno Lima", role: "equipe", active: true },
-      { id: "u4", email: "carla.dias@" + DOMAIN, full_name: "Carla Dias", role: "equipe", active: false },
+      { id: "u4", email: "carla.dias@" + DOMAIN, full_name: "Carla Dias", role: "equipe", active: false, approved_at: "2026-01-10T12:00:00Z" },
+      { id: "u5", email: "diego.rocha@" + DOMAIN, full_name: "Diego Rocha", role: "equipe", active: false, approved_at: null },
     ];
     const PR = [
       { id: "p1", code: "TV-171", name: "Eficiência de fertilizante foliar em soja", crop: "Soja", client: "Cliente A", location: "Fazenda Experimental — Uberaba/MG", status: "andamento", start_date: addDays(t0, -40), end_date: addDays(t0, 120), owner_id: "u2", description: "DBC com 6 tratamentos e 4 repetições." },
@@ -184,7 +185,11 @@
       resendConfirmation: async () => { await wait(); return {}; },
       updatePassword: async () => { await wait(); return {}; },
       load: async () => { await wait(); return clone(db); },
-      saveProfile: async (id, patch) => { const p = db.profiles.find((x) => x.id === id); Object.assign(p, patch); return clone(p); },
+      saveProfile: async (id, patch) => {
+        const p = db.profiles.find((x) => x.id === id); Object.assign(p, patch);
+        if (p.active && !p.approved_at) p.approved_at = now();
+        return clone(p);
+      },
       saveProject: async (p) => {
         if (p.id) { const cur = db.projects.find((x) => x.id === p.id); Object.assign(cur, p); return clone(cur); }
         const n = { ...p, id: uid(), created_at: now(), created_by: session.user.id };
@@ -274,7 +279,9 @@
       await api.signOut();
       state.screen = "auth";
       state.authMode = "login";
-      state.authMsg = "Seu acesso não está ativo. Fale com a gestão do P&D.";
+      state.authMsg = state.me && !state.me.approved_at
+        ? "Cadastro recebido. A gestão do P&D precisa aprovar o seu acesso; tente entrar de novo depois da aprovação."
+        : "Seu acesso não está ativo. Fale com a gestão do P&D.";
       render();
       return;
     }
@@ -383,7 +390,7 @@
           } else if (!r || !r.session) {
             state.authMode = "login";
             state.pendingEmail = email;
-            state.authMsg = `Conta criada. Abra o e-mail enviado para ${email} (confira também o lixo eletrônico) e clique no link de confirmação; depois entre aqui.`;
+            state.authMsg = `Conta criada. 1) Abra o e-mail enviado para ${email} (confira também o lixo eletrônico) e clique no link de confirmação. 2) Aguarde a gestão do P&D aprovar o seu acesso.`;
             renderAuth();
           }
         } else {
@@ -518,6 +525,7 @@
     const activeProj = state.projects.filter((p) => p.status === "andamento");
     const dateLong = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
     return `
+      ${isManager() && pendingPeople().length ? `<a class="notice pending-alert" href="#/equipe">${icon("users")} ${pendingPeople().length === 1 ? "1 pessoa aguarda" : `${pendingPeople().length} pessoas aguardam`} aprovação de acesso. Revisar na aba Equipe.</a>` : ""}
       <div class="page-head"><div><h1>Olá, ${esc(firstName(state.me.full_name))}</h1><p>${esc(dateLong)}</p></div>
         <div class="actions"><button class="btn primary" data-new-task>${icon("plus")}Nova tarefa</button></div></div>
       <div class="stats">
@@ -622,6 +630,9 @@
       </div>
       ${state.taskMode === "quadro" ? taskBoard(list) : `<section class="card">${taskList(list, { empty: "Nenhuma tarefa com esses filtros." })}</section>`}`;
   }
+
+  const isPending = (p) => !p.active && !p.approved_at;
+  const pendingPeople = () => state.profiles.filter(isPending);
 
   // ------------------------------------------------------------------ painel
   // Mesmo formato da view painel_projetos, para a demonstração (e se a view falhar).
@@ -822,15 +833,30 @@
 
   function pageTeam() {
     const openCount = (id) => state.tasks.filter((t) => assigneesOf(t).includes(id) && t.status !== "concluida").length;
+    const pend = pendingPeople();
+    const people = state.profiles.filter((p) => !isPending(p));
     return `
       <div class="page-head"><div><h1>Equipe</h1><p>${state.profiles.filter((p) => p.active).length} pessoas com acesso</p></div></div>
+      ${isManager() && pend.length ? `
+      <section class="card card-pad pending-box">
+        <h2>Aguardando aprovação (${pend.length})</h2>
+        <p class="hint" style="margin-bottom:10px">Só aprove quem é da equipe do P&amp;D. Até a aprovação, a pessoa não vê nenhum projeto.</p>
+        <ul class="pending-list">${pend.map((p) => `
+          <li>
+            <span class="who"><span class="avatar xs" aria-hidden="true">${esc(initials(p.full_name))}</span><span><strong>${esc(p.full_name || "—")}</strong><br><span class="hint">${esc(p.email)} · cadastro em ${fmtDateTime(p.created_at)}</span></span></span>
+            <span class="actions">
+              <button class="btn sm danger" data-refuse="${esc(p.id)}">Recusar</button>
+              <button class="btn sm primary" data-approve="${esc(p.id)}">${icon("check")}Aprovar</button>
+            </span>
+          </li>`).join("")}</ul>
+      </section>` : ""}
       ${isManager() ? `<p class="notice" style="margin-bottom:14px">${ALLOW_SIGNUP
-        ? `Para incluir alguém: peça para a pessoa abrir o sistema, clicar em “Criar conta” e usar o e-mail @${esc(DOMAIN)}. Ela entra como equipe; aqui você pode torná-la gestora ou desativar o acesso.`
+        ? `Para incluir alguém: peça para a pessoa abrir o sistema, clicar em “Criar conta” e usar o e-mail @${esc(DOMAIN)}. Ela aparece aqui como “aguardando aprovação”; depois de aprovada, você pode torná-la gestora ou desativar o acesso.`
         : `Para incluir alguém: no painel do Supabase, em Authentication → Users → Add user, cadastre o e-mail @${esc(DOMAIN)}. Ela aparece aqui como equipe.`}</p>` : ""}
       <section class="card" style="overflow-x:auto">
         <table class="table">
           <thead><tr><th>Nome</th><th class="hide-sm">E-mail</th><th>Papel</th><th>Acesso</th><th class="hide-sm">Tarefas abertas</th>${isManager() ? "<th></th>" : ""}</tr></thead>
-          <tbody>${state.profiles.map((p) => `
+          <tbody>${people.map((p) => `
             <tr>
               <td><span class="who"><span class="avatar xs" aria-hidden="true">${esc(initials(p.full_name))}</span>${esc(p.full_name || "—")}</span></td>
               <td class="hide-sm muted">${esc(p.email)}</td>
@@ -999,7 +1025,7 @@
           ${navItem("projetos", "projetos", "Projetos", "folder")}
           ${navItem("tarefas", "tarefas", "Tarefas", "check")}
           ${navItem("painel", "painel", "Painel", "chart")}
-          ${navItem("equipe", "equipe", "Equipe", "users")}
+          ${navItem("equipe", "equipe", `Equipe${isManager() && pendingPeople().length ? ` <span class="nav-count" aria-label="${pendingPeople().length} aguardando aprovação">${pendingPeople().length}</span>` : ""}`, "users")}
         </nav>
         <div class="user">
           <button class="btn ghost icon" data-refresh aria-label="Atualizar dados" title="Atualizar">${icon("refresh")}</button>
@@ -1018,6 +1044,15 @@
     $$("[data-new-project]", root).forEach((b) => b.addEventListener("click", () => projectModal(null)));
     $$("[data-edit-project]", root).forEach((b) => b.addEventListener("click", () => projectModal(b.dataset.editProject)));
     $$("[data-edit-person]", root).forEach((b) => b.addEventListener("click", () => personModal(b.dataset.editPerson)));
+    $$("[data-approve]", root).forEach((b) => b.addEventListener("click", () => {
+      const p = profile(b.dataset.approve);
+      run(() => api.saveProfile(p.id, { active: true }), `${p.full_name || p.email} aprovado(a). Já pode entrar.`);
+    }));
+    $$("[data-refuse]", root).forEach((b) => b.addEventListener("click", () => {
+      const p = profile(b.dataset.refuse);
+      if (!confirm(`Recusar o acesso de ${p.full_name || p.email}? A pessoa continua sem ver nada; dá para aprovar depois em Editar.`)) return;
+      run(() => api.saveProfile(p.id, { approved_at: new Date().toISOString() }), "Acesso recusado.");
+    }));
     $$("[data-del-project]", root).forEach((b) => b.addEventListener("click", async () => {
       const p = project(b.dataset.delProject);
       const n = progressOf(p.id).total;

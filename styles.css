@@ -325,3 +325,13 @@ dialog::backdrop { background: rgba(20, 30, 25, .45); }
 /* Dentro do Wix a logo some (o cabeçalho do site já tem); o cartão de login mantém o nome da área. */
 .embed .auth-card .brand-app { display: flex !important; }
 .embed .topbar .brand-app { display: flex !important; }
+
+/* ---------- aprovação de contas ---------- */
+.nav-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--red); color: #fff; font-family: var(--font-body, sans-serif); font-size: 12px; font-weight: 700; margin-left: 4px; }
+.pending-box { margin-bottom: 16px; border-top: 4px solid var(--lime); }
+.pending-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.pending-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--border); }
+.pending-list li:first-child { border-top: 0; }
+.pending-list .who { align-items: flex-start; }
+.pending-alert { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; text-decoration: none; font-weight: 600; }
+.pending-alert:hover { text-decoration: underline; }
