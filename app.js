@@ -95,6 +95,7 @@
       signUp: async (name, email, password) => ok(await sb.auth.signUp({ email, password, options: { data: { full_name: name }, emailRedirectTo: redirect } })),
       signOut: async () => { await sb.auth.signOut(); },
       resetPassword: async (email) => ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: redirect })),
+      resendConfirmation: async (email) => ok(await sb.auth.resend({ type: "signup", email, options: { emailRedirectTo: redirect } })),
       updatePassword: async (password) => ok(await sb.auth.updateUser({ password })),
       load: async () => {
         const [p, pr, t, a] = await Promise.all([
@@ -180,6 +181,7 @@
       signUp: async () => { await wait(); return { session: null }; },
       signOut: async () => { session = null; listener("SIGNED_OUT", null); },
       resetPassword: async () => { await wait(); return {}; },
+      resendConfirmation: async () => { await wait(); return {}; },
       updatePassword: async () => { await wait(); return {}; },
       load: async () => { await wait(); return clone(db); },
       saveProfile: async (id, patch) => { const p = db.profiles.find((x) => x.id === id); Object.assign(p, patch); return clone(p); },
@@ -210,6 +212,7 @@
     screen: "boot", // boot | auth | app | recovery
     authMode: "login", // login | signup | forgot
     authMsg: "",
+    pendingEmail: "",
     userId: null,
     me: null,
     profiles: [],
@@ -321,7 +324,7 @@
         <div class="field"><label for="email">E-mail corporativo</label><input class="input" id="email" type="email" autocomplete="username" required placeholder="nome.sobrenome@${esc(DOMAIN)}"></div>`,
     }[m];
     const links = {
-      login: `<button type="button" class="linkbtn" data-mode="forgot">Esqueci a senha</button>${ALLOW_SIGNUP ? `<button type="button" class="linkbtn" data-mode="signup">Criar conta</button>` : ""}`,
+      login: `${state.pendingEmail ? `<button type="button" class="linkbtn" data-resend>Não chegou? Reenviar confirmação</button>` : ""}<button type="button" class="linkbtn" data-mode="forgot">Esqueci a senha</button>${ALLOW_SIGNUP ? `<button type="button" class="linkbtn" data-mode="signup">Criar conta</button>` : ""}`,
       signup: `<button type="button" class="linkbtn" data-mode="login">Já tenho conta</button>`,
       forgot: `<button type="button" class="linkbtn" data-mode="login">Voltar para entrar</button>`,
     }[m];
@@ -340,6 +343,14 @@
         <a class="auth-back" href="${esc(SITE_URL)}" target="_top">${icon("left")}Voltar ao site mineragro.com</a>
       </div>`;
     $$("[data-mode]").forEach((b) => b.addEventListener("click", () => { state.authMode = b.dataset.mode; state.authMsg = ""; renderAuth(); }));
+    $("[data-resend]")?.addEventListener("click", async (ev) => {
+      ev.currentTarget.disabled = true;
+      try {
+        await api.resendConfirmation(state.pendingEmail);
+        state.authMsg = `Reenviamos o link para ${state.pendingEmail}. Pode levar alguns minutos; confira também o lixo eletrônico.`;
+      } catch (ex) { state.authMsg = friendly(ex); }
+      renderAuth();
+    });
     const f = $("#authForm");
     $("input", f)?.focus();
     f.addEventListener("submit", async (e) => {
@@ -362,9 +373,17 @@
           if (pw.length < 8) { err.textContent = "A senha precisa ter pelo menos 8 caracteres."; return; }
           if (pw !== $("#pw2").value) { err.textContent = "As senhas não conferem."; return; }
           const r = await api.signUp(name, email, pw);
-          if (!r || !r.session) {
+          // O Supabase não manda e-mail quando o endereço já tem conta confirmada: devolve um usuário sem "identities".
+          const jaTemConta = r && r.user && Array.isArray(r.user.identities) && r.user.identities.length === 0;
+          if (jaTemConta) {
             state.authMode = "login";
-            state.authMsg = `Conta criada. Abra o e-mail enviado para ${email} e clique no link de confirmação; depois entre aqui.`;
+            state.pendingEmail = "";
+            state.authMsg = `${email} já tem conta. Entre com a sua senha ou use “Esqueci a senha” para criar uma nova.`;
+            renderAuth();
+          } else if (!r || !r.session) {
+            state.authMode = "login";
+            state.pendingEmail = email;
+            state.authMsg = `Conta criada. Abra o e-mail enviado para ${email} (confira também o lixo eletrônico) e clique no link de confirmação; depois entre aqui.`;
             renderAuth();
           }
         } else {
